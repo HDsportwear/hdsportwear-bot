@@ -184,7 +184,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return PRODUCT
     await update.message.reply_text(
-        "Вкажіть номер замовлення. Якщо його немає — напишіть «Пропустити».",
+        "Вкажіть номер замовлення. Якщо його немає — напишіть «Далі».",
         reply_markup=ReplyKeyboardRemove(),
     )
     return ORDER_NUMBER
@@ -192,20 +192,20 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def get_order_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     value = update.message.text.strip()
-    context.user_data["order_number"] = "Не вказано" if value.lower() == "пропустити" else value
+    context.user_data["order_number"] = "Не вказано" if value.lower() in {"далі", "пропустити"} else value
     await update.message.reply_text("Який товар ви замовили?")
     return PRODUCT
 
 
 async def get_product(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["product"] = update.message.text.strip()
-    await update.message.reply_text("Вкажіть розмір. Якщо не знаєте — напишіть «Пропустити».")
+    await update.message.reply_text("Вкажіть розмір. Якщо не знаєте — напишіть «Далі».")
     return SIZE
 
 
 async def get_size(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     value = update.message.text.strip()
-    context.user_data["size"] = "Не вказано" if value.lower() == "пропустити" else value
+    context.user_data["size"] = "Не вказано" if value.lower() in {"далі", "пропустити"} else value
     await update.message.reply_text(
         "Вкажіть суму замовлення <b>до знижки</b> цифрами, наприклад: 699",
         parse_mode=ParseMode.HTML,
