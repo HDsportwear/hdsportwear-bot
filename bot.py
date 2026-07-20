@@ -33,6 +33,7 @@ PAYMENT_GROUP_ID = int(os.getenv("PAYMENT_GROUP_ID", str(ADMIN_CHAT_ID)))
 SUPPORT_GROUP_ID = int(os.getenv("SUPPORT_GROUP_ID", str(ADMIN_CHAT_ID)))
 COMPANY_NAME = os.getenv("COMPANY_NAME", "HD Sportwear")
 SITE_URL = os.getenv("SITE_URL", "https://hdsportwear.shop")
+CATALOG_URL = os.getenv("CATALOG_URL", SITE_URL)
 DELIVERY_URL = os.getenv("DELIVERY_URL", f"{SITE_URL}/delivery")
 MANAGER_URL = os.getenv("MANAGER_URL", "https://t.me/Danil_HDsportwear")
 PAYMENT_RECIPIENT = os.getenv("PAYMENT_RECIPIENT", "ФОП Харланов Даніїл Едуардович")
@@ -62,10 +63,10 @@ DISCOUNT_UAH = int(os.getenv("DISCOUNT_UAH", "100"))
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            ["🎁 Отримати знижку 100 грн"],
-            ["📦 Доставка та оплата", "🔄 Обмін та повернення"],
-            ["❓ Допомога", "🛡️ Чому нам довіряють"],
-            ["👨‍💼 Менеджер"],
+            ["🛍 Каталог", "📏 Підібрати розмір"],
+            ["💳 Оплата", "🚚 Доставка"],
+            ["🔄 Обмін та повернення"],
+            ["💬 Поставити питання", "👨‍💼 Менеджер"],
         ],
         resize_keyboard=True,
     )
@@ -138,9 +139,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data["deep_link_order"] = payload
     await update.message.reply_text(
         f"👋 <b>Вітаємо в офіційному боті {escape(COMPANY_NAME)}!</b>\n\n"
-        f"🎁 При повній оплаті на офіційний рахунок ФОП діє <b>знижка {DISCOUNT_UAH} грн</b>.\n\n"
-        "Тут можна отримати реквізити, надіслати квитанцію, дізнатися про доставку, "
-        "оформити звернення щодо обміну або отримати допомогу менеджера.",
+        "Я допоможу переглянути каталог, підібрати розмір, дізнатися умови доставки, "
+        "отримати реквізити для оплати або оформити звернення щодо обміну та повернення.\n\n"
+        f"🎁 При повній оплаті на рахунок ФОП діє <b>знижка {DISCOUNT_UAH} грн</b>.",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu(),
     )
@@ -150,6 +151,37 @@ async def chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"ID цього чату: <code>{update.effective_chat.id}</code>",
         parse_mode=ParseMode.HTML,
+    )
+
+
+async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "🛍 <b>Каталог HD Sportwear</b>\n\n"
+        "Перегляньте актуальні моделі, кольори та ціни на нашому офіційному сайті.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("🛍 Відкрити каталог", url=CATALOG_URL)],
+                [InlineKeyboardButton("📏 Допомогти з розміром", callback_data="support_size")],
+            ]
+        ),
+    )
+
+
+async def size_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "📏 <b>Підбір розміру</b>\n\n"
+        "Щоб менеджер точно підібрав розмір, підготуйте:\n"
+        "• фото або назву моделі;\n"
+        "• обхват грудей;\n"
+        "• обхват талії;\n"
+        "• обхват стегон;\n"
+        "• зріст.\n\n"
+        "Натисніть кнопку нижче — бот збере контактні дані та передасть звернення менеджеру.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("📏 Підібрати розмір", callback_data="support_size")]]
+        ),
     )
 
 
@@ -421,6 +453,17 @@ async def begin_status_support(update: Update, context: ContextTypes.DEFAULT_TYP
     return SUPPORT_PHONE
 
 
+async def begin_size_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    context.user_data["request_type"] = "Підбір розміру"
+    await query.message.reply_text(
+        "📞 Вкажіть номер телефону, за яким менеджер зможе зв’язатися з вами.",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("📱 Надіслати номер", request_contact=True)]], resize_keyboard=True, one_time_keyboard=True),
+    )
+    return SUPPORT_PHONE
+
+
 async def support_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     phone = update.message.contact.phone_number if update.message.contact else update.message.text.strip()
     if len("".join(ch for ch in phone if ch.isdigit())) < 10:
@@ -610,6 +653,7 @@ def build_application() -> Application:
         entry_points=[
             CallbackQueryHandler(begin_support, pattern="^support_start$"),
             CallbackQueryHandler(begin_status_support, pattern="^support_status$"),
+            CallbackQueryHandler(begin_size_support, pattern="^support_size$"),
         ],
         states={
             SUPPORT_PHONE: [MessageHandler(filters.CONTACT, support_phone), MessageHandler(filters.TEXT & ~filters.COMMAND, support_phone)],
@@ -640,12 +684,18 @@ def build_application() -> Application:
     application.add_handler(CallbackQueryHandler(faq_callback, pattern=r"^faq:"))
     application.add_handler(CallbackQueryHandler(exchange_menu_callback, pattern="^exchange_menu$"))
     application.add_handler(CallbackQueryHandler(manager_callback, pattern=r"^(payment_ok|payment_missing|support_taken):\d+$"))
+    application.add_handler(MessageHandler(filters.Regex("^🛍 Каталог$"), catalog))
+    application.add_handler(MessageHandler(filters.Regex("^📏 Підібрати розмір$"), size_help))
+    application.add_handler(MessageHandler(filters.Regex("^💳 Оплата$"), payment_offer))
+    application.add_handler(MessageHandler(filters.Regex("^🚚 Доставка$"), delivery))
+    application.add_handler(MessageHandler(filters.Regex("^🔄 Обмін та повернення$"), exchange_menu_message))
+    application.add_handler(MessageHandler(filters.Regex("^💬 Поставити питання$"), help_menu))
+    application.add_handler(MessageHandler(filters.Regex("^👨‍💼 Менеджер$"), manager))
+    # Старі назви кнопок залишені для сумісності зі старими повідомленнями.
     application.add_handler(MessageHandler(filters.Regex("^🎁 Отримати знижку 100 грн$"), payment_offer))
     application.add_handler(MessageHandler(filters.Regex("^🛡️ Чому нам довіряють$"), trust))
     application.add_handler(MessageHandler(filters.Regex("^📦 Доставка та оплата$"), delivery))
-    application.add_handler(MessageHandler(filters.Regex("^🔄 Обмін та повернення$"), exchange_menu_message))
     application.add_handler(MessageHandler(filters.Regex("^❓ Допомога$"), help_menu))
-    application.add_handler(MessageHandler(filters.Regex("^👨‍💼 Менеджер$"), manager))
     application.add_error_handler(error_handler)
     return application
 
